@@ -1,0 +1,13 @@
+Flask==2.3.3
+Flask-CORS==4.0.0
+Werkzeug==2.3.7
+biopython==1.81
+requests==2.31.0
+pandas==2.1.1
+numpy==1.24.3
+plotly==5.17.0
+gunicorn==21.2.0
+python-dotenv==1.0.0
+celery==5.3.4
+redis==5.0.1
+kaleido==0.2.1 

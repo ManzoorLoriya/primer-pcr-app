@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Primer Design Tool</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Roboto', Arial, sans-serif;
+            background: #f4f6fa;
+        }
+        .navbar {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: linear-gradient(90deg, #007bff 60%, #00c6ff 100%);
+        }
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+        }
+        .navbar-brand i {
+            font-size: 2rem;
+            margin-right: 10px;
+        }
+        .container {
+            max-width: 1100px;
+        }
+        .card, .parameter-card {
+            border-radius: 18px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+            border: none;
+            animation: animate__fadeIn 1s;
+        }
+        .card-header {
+            background: none;
+            border-bottom: none;
+            font-weight: 600;
+            font-size: 1.2rem;
+        }
+        .parameter-card {
+            transition: box-shadow 0.3s, transform 0.2s;
+        }
+        .parameter-card:hover {
+            box-shadow: 0 8px 32px rgba(0,123,255,0.10);
+            transform: translateY(-2px) scale(1.01);
+        }
+        .drag-drop-zone {
+            border: 2px dashed #007bff;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #eaf4ff;
+            transition: border-color 0.3s, background 0.3s;
+        }
+        .drag-drop-zone:hover, .drag-drop-zone.dragover {
+            border-color: #00c6ff;
+            background: #d0eaff;
+        }
+        .form-select, .form-control {
+            border-radius: 8px;
+        }
+        .input-group-text {
+            min-width: 50px;
+            background: #f0f4fa;
+            border-radius: 8px 0 0 8px;
+        }
+        .btn {
+            border-radius: 8px;
+            font-weight: 600;
+            transition: box-shadow 0.2s, background 0.2s, color 0.2s;
+        }
+        .btn-primary, .btn-outline-primary {
+            background: linear-gradient(90deg, #007bff 60%, #00c6ff 100%);
+            border: none;
+            color: #fff;
+        }
+        .btn-primary:hover, .btn-outline-primary:hover {
+            background: linear-gradient(90deg, #0056b3 60%, #00aaff 100%);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(0,123,255,0.15);
+        }
+        .btn-outline-success:hover, .btn-outline-danger:hover, .btn-outline-secondary:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            background: #f0f4fa;
+        }
+        .export-btn {
+            margin: 0 5px;
+            font-size: 1rem;
+            padding: 6px 16px;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            margin: 30px 0 20px 0;
+        }
+        .step {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 12px;
+            position: relative;
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #007bff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .step.active {
+            background: linear-gradient(90deg, #007bff 60%, #00c6ff 100%);
+            color: #fff;
+        }
+        .step.completed {
+            background: #28a745;
+            color: #fff;
+        }
+        .step::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 100%;
+            width: 24px;
+            height: 2px;
+            background: #e9ecef;
+            transform: translateY(-50%);
+        }
+        .step:last-child::after {
+            display: none;
+        }
+        .results-section .card {
+            border: 2px solid #007bff22;
+            background: #fff;
+        }
+        .export-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .card.bg-light.border-primary {
+            border: 2px solid #007bff55;
+            background: linear-gradient(90deg, #eaf4ff 60%, #f8f9fa 100%);
+        }
+        .fw-bold.fs-5, .fw-bold.fs-4 {
+            letter-spacing: 0.5px;
+        }
+        .table {
+            border-radius: 12px;
+            overflow: hidden;
+            background: #f8f9fa;
+        }
+        .table th {
+            background: #eaf4ff;
+            font-weight: 600;
+        }
+        .table-striped>tbody>tr:nth-of-type(odd) {
+            background-color: #f4f8ff;
+        }
+        .table-hover>tbody>tr:hover {
+            background-color: #e0f0ff;
+        }
+        .primer-sequence {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 1.05rem;
+            background: #f0f4fa;
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+        .badge {
+            font-size: 0.95rem;
+            padding: 0.5em 0.8em;
+            border-radius: 6px;
+        }
+        .card .card-header {
+            border-radius: 18px 18px 0 0;
+        }
+        .card .card-body {
+            border-radius: 0 0 18px 18px;
+        }
+        .card.h-100 {
+            min-height: 320px;
+        }
+        .divider {
+            border-top: 2px solid #eaf4ff;
+            margin: 32px 0 24px 0;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 8px;
+            }
+            .step-indicator {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .step {
+                margin: 0 0 10px 0;
+            }
+            .export-buttons {
+                flex-direction: column;
+                gap: 6px;
+            }
+        }
+        h5, .card-header, .modal-title {
+            font-size: 1.45rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.5px;
+        }
+        .section-title, .results-section .card-header, .parameter-card .card-header {
+            margin-bottom: 18px;
+        }
+        .container > .divider {
+            margin: 48px 0 32px 0;
+        }
+        .footer {
+            font-family: 'Inter', 'Roboto', Arial, sans-serif;
+            font-size: 1rem;
+            color: #333;
+        }
+        body.dark-mode {
+            background: #111216;
+            color: #f4f6fa;
+            transition: background 0.3s, color 0.3s;
+        }
+        .dark-mode .navbar {
+            background: rgba(35, 43, 62, 0.92) !important;
+            box-shadow: 0 4px 24px rgba(0,198,255,0.10);
+            backdrop-filter: blur(6px);
+        }
+        .dark-mode .navbar-brand, .dark-mode .nav-link, .dark-mode .navbar .btn {
+            color: #fff !important;
+        }
+        .dark-mode .container, .dark-mode .card, .dark-mode .parameter-card, .dark-mode .card.bg-light.border-primary {
+            background: linear-gradient(135deg, #23272f 80%, #232b3e 100%) !important;
+            color: #f4f6fa !important;
+            border: 1.5px solid #232b3e !important;
+            box-shadow: 0 4px 32px rgba(0,198,255,0.07);
+            transition: background 0.3s, color 0.3s;
+        }
+        .dark-mode .card-header, .dark-mode .card-body {
+            background: transparent !important;
+            color: #f4f6fa !important;
+        }
+        .dark-mode .form-control, .dark-mode .form-select {
+            background: #23272f;
+            color: #f4f6fa;
+            border-color: #2c3550;
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
+        }
+        .dark-mode .form-control:focus, .dark-mode .form-select:focus {
+            background: #232b3e;
+            color: #fff;
+            border-color: #00c6ff;
+            box-shadow: 0 0 0 2px #00c6ff44;
+        }
+        .dark-mode .input-group-text {
+            background: #232b3e;
+            color: #b0b8c1;
+        }
+        .dark-mode .drag-drop-zone {
+            background: #232b3e;
+            border-color: #00c6ff;
+            color: #f4f6fa;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .dark-mode .drag-drop-zone:hover, .dark-mode .drag-drop-zone.dragover {
+            background: #181a20;
+            border-color: #00c6ff;
+        }
+        .dark-mode .table {
+            background: #23272f !important;
+            color: #f4f6fa !important;
+        }
+        .dark-mode .table th {
+            background: #181a20 !important;
+            color: #00c6ff !important;
+        }
+        .dark-mode .table-striped>tbody>tr:nth-of-type(odd) {
+            background-color: #232b3e !important;
+        }
+        .dark-mode .table-hover>tbody>tr:hover {
+            background-color: #1a2330 !important;
+        }
+        .dark-mode .badge {
+            color: #fff !important;
+            background: linear-gradient(90deg, #00c6ff 60%, #007bff 100%) !important;
+            box-shadow: 0 2px 8px rgba(0,198,255,0.15);
+        }
+        .dark-mode .export-btn, .dark-mode .btn, .dark-mode .btn-primary, .dark-mode .btn-outline-primary {
+            background: linear-gradient(90deg, #007bff 60%, #00c6ff 100%) !important;
+            color: #fff !important;
+            border: none !important;
+            box-shadow: 0 2px 16px #00c6ff33, 0 1.5px 8px #007bff22;
+            transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+        }
+        .dark-mode .export-btn:hover, .dark-mode .btn-primary:hover, .dark-mode .btn-outline-primary:hover {
+            background: linear-gradient(90deg, #00c6ff 60%, #007bff 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 24px #00c6ff55;
+        }
+        .dark-mode .btn-outline-success, .dark-mode .btn-outline-danger, .dark-mode .btn-outline-secondary {
+            background: #232b3e !important;
+            color: #fff !important;
+            border: 1.5px solid #00c6ff !important;
+        }
+        .dark-mode .alert {
+            background: #232b3e;
+            color: #fff;
+            border-color: #00c6ff;
+            box-shadow: 0 2px 12px #00c6ff22;
+        }
+        .dark-mode .footer {
+            background: #111216 !important;
+            color: #b0b8c1 !important;
+            border-top: 2.5px solid #00c6ff !important;
+        }
+        .dark-mode .text-muted {
+            color: #b0b8c1 !important;
+        }
+        .dark-mode .step {
+            background: #232b3e;
+            color: #00c6ff;
+            box-shadow: 0 2px 8px #00c6ff33;
+            border: 1.5px solid #00c6ff;
+        }
+        .dark-mode .step.active {
+            background: linear-gradient(90deg, #00c6ff 60%, #007bff 100%);
+            color: #fff;
+            border: 2px solid #00c6ff;
+        }
+        .dark-mode .step.completed {
+            background: #28a745;
+            color: #fff;
+            border: 2px solid #28a745;
+        }
+        .dark-mode .divider {
+            border-top: 2px solid #00c6ff;
+        }
+        .dark-mode .card.bg-light.border-primary {
+            background: linear-gradient(90deg, #23272f 60%, #232b3e 100%) !important;
+            border: 2.5px solid #00c6ff !important;
+            box-shadow: 0 2px 16px #00c6ff33;
+        }
+        .dark-mode .fw-bold.fs-4, .dark-mode .fw-bold.fs-5 {
+            color: #00c6ff !important;
+        }
+        .dark-mode .primer-sequence {
+            background: #181a20 !important;
+            color: #00c6ff !important;
+        }
+        .dark-mode .modal-content, .dark-mode .dropdown-menu {
+            background: #232b3e !important;
+            color: #f4f6fa !important;
+            box-shadow: 0 8px 32px #00c6ff22;
+        }
+        .accordion-item {
+            transition: background 0.3s, color 0.3s;
+        }
+        .accordion-button {
+            transition: background 0.3s, color 0.3s;
+        }
+        .dark-mode .accordion-item {
+            background: #232b3e !important;
+            border: 1.5px solid #00c6ff !important;
+            color: #f4f6fa !important;
+        }
+        .dark-mode .accordion-button {
+            background: #23272f !important;
+            color: #00c6ff !important;
+            border-bottom: 1.5px solid #00c6ff !important;
+            box-shadow: none !important;
+        }
+        .dark-mode .accordion-button:not(.collapsed) {
+            background: linear-gradient(90deg, #232b3e 60%, #23272f 100%) !important;
+            color: #fff !important;
+            border-bottom: 1.5px solid #00c6ff !important;
+        }
+        .dark-mode .accordion-body {
+            background: #232b3e !important;
+            color: #f4f6fa !important;
+            border-top: 1.5px solid #00c6ff !important;
+        }
+        .advanced-options-spacing {
+            margin-top: 2.5rem !important;
+        }
+        .dark-mode .form-label, .dark-mode label {
+            color: #f4f6fa !important;
+        }
+        .dark-mode .accordion-button .fas, .dark-mode .accordion-header .fas, .dark-mode .parameter-help, .dark-mode .input-group-text, .dark-mode .primer-sequence, .dark-mode .fa, .dark-mode .fas, .dark-mode .far, .dark-mode .fab {
+            color: #00c6ff !important;
+            text-shadow: 0 1px 4px #11121699;
+        }
+        .dark-mode .invalid-feedback, .dark-mode .text-danger {
+            color: #ff5c77 !important;
+        }
+        .dark-mode .text-primary {
+            color: #00c6ff !important;
+        }
+        .dark-mode .text-success {
+            color: #28e07b !important;
+        }
+        .dark-mode .text-warning {
+            color: #ffc107 !important;
+        }
+        .dark-mode .text-info {
+            color: #17a2b8 !important;
+        }
+        .dark-mode .text-muted {
+            color: #b0b8c1 !important;
+        }
+        .dark-mode textarea,
+        .dark-mode .form-control[type='textarea'],
+        .dark-mode #sequenceInput {
+            background: #232b3e !important;
+            color: #f4f6fa !important;
+            border-color: #00c6ff !important;
+        }
+        .dark-mode textarea::placeholder,
+        .dark-mode .form-control[type='textarea']::placeholder,
+        .dark-mode #sequenceInput::placeholder {
+            color: #b0b8c1 !important;
+            opacity: 1;
+        }
+        .dark-mode .results-section .card,
+        .dark-mode .results-section .card-header,
+        .dark-mode .results-section .card-body {
+            background: #232b3e !important;
+            color: #f4f6fa !important;
+            border-color: #00c6ff !important;
+            transition: background 0.3s, color 0.3s;
+        }
+        .dark-mode .results-section .table {
+            background: #232b3e !important;
+            color: #f4f6fa !important;
+        }
+        .dark-mode .results-section .table-striped>tbody>tr:nth-of-type(odd) {
+            background-color: #23272f !important;
+        }
+        .dark-mode .results-section .table-hover>tbody>tr:hover {
+            background-color: #181a20 !important;
+        }
+        .dark-mode .results-section .fw-bold,
+        .dark-mode .results-section .text-primary {
+            color: #00c6ff !important;
+        }
+        .dark-mode .results-section .badge {
+            background: linear-gradient(90deg, #00c6ff 60%, #007bff 100%) !important;
+            color: #fff !important;
+            box-shadow: 0 2px 8px #00c6ff33;
+        }
+        .dark-mode .results-section .export-btn,
+        .dark-mode .results-section .btn,
+        .dark-mode .results-section .fa,
+        .dark-mode .results-section .fas {
+            color: #00c6ff !important;
+        }
+        .dark-mode .results-section .primer-sequence {
+            background: #181a20 !important;
+            color: #00c6ff !important;
+        }
+        .dark-mode .results-section .card.bg-light.border-primary {
+            background: linear-gradient(90deg, #232b3e 60%, #23272f 100%) !important;
+            border: 2.5px solid #00c6ff !important;
+            color: #f4f6fa !important;
+        }
+        .dark-mode .results-section .fa-calculator {
+            color: #00c6ff !important;
+            text-shadow: 0 1px 4px #11121699;
+        }
+        /* Custom animation for button hover */
+        .btn:hover {
+            animation: animate__pulse 0.7s;
+        }
+        /* Fade-in for cards and parameter cards */
+        .card, .parameter-card {
+            animation: animate__fadeIn 1s;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary animate__animated animate__fadeInDown">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-dna me-2"></i>Primer Design Tool
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#helpModal">
+                    <i class="fas fa-question-circle"></i> Help
+                </a>
+                <button id="darkModeToggle" class="btn btn-outline-light ms-3" type="button" title="Toggle dark mode">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4 animate__animated animate__fadeIn">
+        <!-- Step Indicator -->
+        <div class="step-indicator">
+            <div class="step active" data-step="1">
+                <i class="fas fa-upload"></i>
+            </div>
+            <div class="step" data-step="2">
+                <i class="fas fa-cog"></i>
+            </div>
+            <div class="step" data-step="3">
+                <i class="fas fa-play"></i>
+            </div>
+            <div class="step" data-step="4">
+                <i class="fas fa-chart-bar"></i>
+            </div>
+        </div>
+
+        <!-- Input Section -->
+        <form id="designForm">
+            <div id="input-section" class="animate__animated animate__fadeInLeft">
+                <div class="row">
+                    <div class="col-lg-6">
+                        <div class="card parameter-card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-file-upload me-2"></i>Sequence Input</h5>
+                            </div>
+                            <div class="card-body">
+                                <!-- File Upload -->
+                                <div class="drag-drop-zone mb-3" id="dropZone">
+                                    <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+                                    <p class="mb-2">Drag & drop FASTA files here or click to browse</p>
+                                    <input type="file" id="fileInput" accept=".fasta,.fas,.fa,.txt" multiple style="display: none;">
+                                    <button class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                                        Browse Files
+                                    </button>
+                                    <small class="text-muted d-block mt-2">Supported formats: FASTA, TXT</small>
+                                </div>
+
+                                <!-- Direct Sequence Input -->
+                                <div class="mb-3">
+                                    <label class="form-label">Or paste sequence directly:</label>
+                                    <textarea class="form-control" id="sequenceInput" rows="6" 
+                                        placeholder="Enter DNA sequence in FASTA format or plain text..."></textarea>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+
+                                <!-- Sequence Info -->
+                                <div id="sequenceInfo" class="alert alert-info" style="display: none;">
+                                    <strong>Sequence loaded:</strong>
+                                    <span id="sequenceLength"></span> bp
+                                    <span id="sequenceGC"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <div class="card parameter-card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-sliders-h me-2"></i>Primer Parameters</h5>
+                            </div>
+                            <div class="card-body">
+                                <!-- Primer Length -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        Primer Length Range
+                                        <i class="fas fa-info-circle parameter-help ms-1" 
+                                           title="Recommended: 18-25 bp for optimal specificity"></i>
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Min</span>
+                                                <input type="number" class="form-control" id="minLength" 
+                                                       value="18" min="15" max="35">
+                                                <span class="input-group-text">bp</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Max</span>
+                                                <input type="number" class="form-control" id="maxLength" 
+                                                       value="25" min="15" max="35">
+                                                <span class="input-group-text">bp</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+
+                                <!-- Melting Temperature -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        Melting Temperature (Tm)
+                                        <i class="fas fa-info-circle parameter-help ms-1" 
+                                           title="Optimal range: 55-65°C for most PCR reactions"></i>
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Min</span>
+                                                <input type="number" class="form-control" id="minTm" 
+                                                       value="55" min="45" max="75" step="0.5">
+                                                <span class="input-group-text">°C</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Max</span>
+                                                <input type="number" class="form-control" id="maxTm" 
+                                                       value="65" min="45" max="75" step="0.5">
+                                                <span class="input-group-text">°C</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+
+                                <!-- GC Content -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        GC Content
+                                        <i class="fas fa-info-circle parameter-help ms-1" 
+                                           title="Recommended: 40-60% for stable binding"></i>
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Min</span>
+                                                <input type="number" class="form-control" id="minGC" 
+                                                       value="40" min="20" max="80">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Max</span>
+                                                <input type="number" class="form-control" id="maxGC" 
+                                                       value="60" min="20" max="80">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+
+                                <!-- Product Size -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        Product Size Range
+                                        <i class="fas fa-info-circle parameter-help ms-1" 
+                                           title="Smaller products amplify more efficiently"></i>
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Min</span>
+                                                <input type="number" class="form-control" id="minProduct" 
+                                                       value="100" min="50" max="2000">
+                                                <span class="input-group-text">bp</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="input-group">
+                                                <span class="input-group-text">Max</span>
+                                                <input type="number" class="form-control" id="maxProduct" 
+                                                       value="500" min="50" max="2000">
+                                                <span class="input-group-text">bp</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+                                <div class="mt-3">
+                                    <h6><i class="fas fa-calculator me-2"></i>Synthesis Cost</h6>
+                                    <div class="row g-2">
+                                        <div class="col-md-6">
+                                            <select class="form-select" id="synthesisScale">
+                                                <option value="25nm">25nm Scale</option>
+                                                <option value="100nm">100nm Scale</option>
+                                                <option value="250nm">250nm Scale</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <select class="form-select" id="purificationMethod">
+                                                <option value="desalt">Default</option>
+                                                <option value="hplc">HPLC</option>
+                                                <option value="page">PAGE</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Advanced Options -->
+                                <div class="accordion mt-4 advanced-options-spacing" id="advancedOptions">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed" type="button" 
+                                                    data-bs-toggle="collapse" data-bs-target="#collapseAdvanced">
+                                                Advanced Options
+                                            </button>
+                                        </h2>
+                                        <div id="collapseAdvanced" class="accordion-collapse collapse">
+                                            <div class="accordion-body">
+                                                <div class="mb-3">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="checkSpecificity" checked>
+                                                        <label class="form-check-label">
+                                                            Check primer specificity (BLAST)
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="avoidDimers" checked>
+                                                        <label class="form-check-label">
+                                                            Avoid primer dimers
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Target Organism (for specificity)</label>
+                                                    <select class="form-select" id="targetOrganism">
+                                                        <option value="human">Homo sapiens</option>
+                                                        <option value="mouse">Mus musculus</option>
+                                                        <option value="rat">Rattus norvegicus</option>
+                                                        <option value="ecoli">E. coli</option>
+                                                        <option value="custom">Custom database</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button class="btn btn-primary btn-lg animate__animated animate__pulse animate__infinite" id="designButton" onclick="submitDesign()">
+                        <i class="fas fa-play me-2"></i>Design Primers
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Progress Section -->
+        <div id="progress-section" class="progress-section animate__animated animate__fadeIn" style="display:none;">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">
+                        <i class="fas fa-cog fa-spin me-2"></i>Designing Primers...
+                    </h5>
+                    <div class="progress mb-3" style="height: 20px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="progressBar" role="progressbar" style="width: 0%">
+                            <span id="progressText">0%</span>
+                        </div>
+                    </div>
+                    <div id="progressSteps">
+                        <div class="progress-step" id="step1">
+                            <i class="fas fa-spinner fa-spin"></i> Analyzing sequence...
+                        </div>
+                        <div class="progress-step" id="step2" style="display: none;">
+                            <i class="fas fa-spinner fa-spin"></i> Generating primer candidates...
+                        </div>
+                        <div class="progress-step" id="step3" style="display: none;">
+                            <i class="fas fa-spinner fa-spin"></i> Checking specificity...
+                        </div>
+                        <div class="progress-step" id="step4" style="display: none;">
+                            <i class="fas fa-spinner fa-spin"></i> Optimizing results...
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-secondary mt-3" onclick="cancelAnalysis()">
+                        Cancel Analysis
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="results-section animate__animated animate__fadeInUp" style="display:none;">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-chart-bar me-2"></i>Primer Design Results</h5>
+                    <div class="export-buttons">
+                        <button class="btn btn-sm btn-outline-success export-btn animate__animated animate__bounceIn" onclick="exportResults('csv')">
+                            <i class="fas fa-file-csv me-1"></i>Export CSV
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger export-btn animate__animated animate__bounceIn" onclick="exportResults('pdf')">
+                            <i class="fas fa-file-pdf me-1"></i>Export PDF
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary export-btn animate__animated animate__bounceIn" onclick="exportResults('json')">
+                            <i class="fas fa-file-code me-1"></i>Export JSON
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Summary Stats -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h3 class="text-primary" id="totalPrimers">0</h3>
+                                <small class="text-muted">Primer Pairs Found</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h3 class="text-success" id="highQuality">0</h3>
+                                <small class="text-muted">High Quality</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h3 class="text-warning" id="mediumQuality">0</h3>
+                                <small class="text-muted">Medium Quality</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h3 class="text-info" id="averageTm">0°C</h3>
+                                <small class="text-muted">Average Tm</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cost Estimate Display -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="card bg-light border-primary mb-3">
+                                <div class="card-body d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="fas fa-calculator fa-lg text-primary me-2"></i>
+                                        <span class="fw-bold fs-5">Total Synthesis Cost</span>
+                                    </div>
+                                    <span id="costEstimate" class="fw-bold fs-4 text-primary">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results Container -->
+                    <div id="resultsContainer"></div>
+
+                    <!-- Visualizations -->
+                    <div class="row mt-4">
+                        <!-- Binding Sites -->
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <i class="fas fa-map-marker-alt me-2"></i>
+                                    Binding Sites
+                                    <button class="btn btn-sm btn-outline-secondary float-end" 
+                                            onclick="downloadViz('binding-sites')">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body" id="bindingSitesViz"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Melting Profile -->
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <i class="fas fa-thermometer-half me-2"></i>
+                                    Melting Profile
+                                    <button class="btn btn-sm btn-outline-secondary float-end" 
+                                            onclick="downloadViz('melting-profile')">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body" id="meltingProfileViz"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Dimer Visualization -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-dna me-2"></i>
+                                    Dimer Analysis
+                                </div>
+                                <div class="card-body" id="dimerViz"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quality Distribution -->
+                    <div class="mt-4">
+                        <h6>Primer Quality Distribution</h6>
+                        <div id="qualityChart" style="height: 300px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-4">
+                <button class="btn btn-secondary animate__animated animate__pulse animate__infinite" onclick="resetForm()">
+                    <i class="fas fa-redo me-2"></i>Design New Primers
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Primer Design Tool - Help</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>How to use this tool:</h6>
+                    <ol>
+                        <li><strong>Input your sequence:</strong> Upload a FASTA file or paste your DNA sequence</li>
+                        <li><strong>Set parameters:</strong> Adjust primer length, Tm, GC content, and product size</li>
+                        <li><strong>Run analysis:</strong> Click "Design Primers" to start the process</li>
+                        <li><strong>Review results:</strong> Examine the generated primers and export your data</li>
+                    </ol>
+                    <h6>Parameter Guidelines:</h6>
+                    <ul>
+                        <li><strong>Primer Length:</strong> 18-25 bp is optimal for most applications</li>
+                        <li><strong>Melting Temperature:</strong> 55-65°C ensures good binding specificity</li>
+                        <li><strong>GC Content:</strong> 40-60% provides stable binding without excessive secondary structure</li>
+                        <li><strong>Product Size:</strong> Smaller products (100-500 bp) amplify more efficiently</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer mt-5 py-3 animate__animated animate__fadeInUp" style="background: #f8f9fa; border-top: 2px solid #eaf4ff;">
+        <div class="container text-center">
+            <span class="fw-bold" style="font-size:1.1rem; letter-spacing:0.5px;">Developed by Manzoor Mohammad Loriya</span><br>
+            <span class="text-muted">loryamanjue786@gmail.com &nbsp;|&nbsp; © 2025</span>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.7.0/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.25.2/plotly.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/primer_design.js') }}"></script>
+</body>
+</html>
