@@ -445,4 +445,5 @@ def get_visualizations(job_id, pair_index):
             ]
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        current_app.logger.error(f"Error generating visualizations: {str(e)}")
+        return jsonify({'error': 'Error generating visualizations'}), 500

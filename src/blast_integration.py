@@ -101,17 +101,14 @@ class BlastIntegration:
         """
         results = {}
         
-        for i, primer in enumerate(primer_list):
-            self.logger.info(f"Processing primer {i+1}/{len(primer_list)}")
-            
-            # Add delay to respect NCBI rate limits
-            if i > 0:
-                time.sleep(3)
-            
-            results[primer] = self.blast_primer(
-                primer, database, organism
-            )
-            
+        for primer in primer_list:
+            try:
+                results[primer] = self.blast_primer(primer, database, organism)
+                time.sleep(1)  # Rate limiting
+            except Exception as e:
+                self.logger.error(f"BLAST failed for primer {primer}: {str(e)}")
+                results[primer] = []
+        
         return results
     
     def filter_off_targets(self, blast_results, identity_threshold=80, 
@@ -121,8 +118,8 @@ class BlastIntegration:
         
         Args:
             blast_results (list): BLAST alignment results
-            identity_threshold (float): Minimum identity % for off-target
-            coverage_threshold (float): Minimum coverage % for off-target
+            identity_threshold (float): Minimum identity percentage
+            coverage_threshold (float): Minimum coverage percentage
             
         Returns:
             list: Filtered off-target results
@@ -130,66 +127,41 @@ class BlastIntegration:
         off_targets = []
         
         for result in blast_results:
-            # Calculate coverage
-            query_coverage = ((result['query_end'] - result['query_start'] + 1) / 
-                            len(result['query_seq'])) * 100
+            identity = result['percent_identity']
+            coverage = (result['align_length'] / len(result['query_seq'])) * 100
             
-            # Filter based on thresholds
-            if (result['percent_identity'] >= identity_threshold and 
-                query_coverage >= coverage_threshold):
-                
-                result['query_coverage'] = query_coverage
-                result['risk_level'] = self._assess_risk_level(
-                    result['percent_identity'], query_coverage
-                )
+            if identity >= identity_threshold and coverage >= coverage_threshold:
+                risk_level = self._assess_risk_level(identity, coverage)
+                result['risk_level'] = risk_level
                 off_targets.append(result)
         
-        # Sort by risk level (highest first)
-        off_targets.sort(key=lambda x: x['percent_identity'], reverse=True)
-        
-        return off_targets
+        return sorted(off_targets, key=lambda x: x['e_value'])
     
     def _assess_risk_level(self, identity, coverage):
-        """
-        Assess the risk level of off-target binding
-        
-        Args:
-            identity (float): Percent identity
-            coverage (float): Query coverage
-            
-        Returns:
-            str: Risk level (High, Medium, Low)
-        """
+        """Assess risk level based on identity and coverage"""
         if identity >= 95 and coverage >= 90:
-            return "High"
+            return 'high'
         elif identity >= 85 and coverage >= 80:
-            return "Medium"
+            return 'medium'
         else:
-            return "Low"
+            return 'low'
     
     def get_organism_databases(self):
-        """
-        Return available organism-specific databases
-        
-        Returns:
-            dict: Database options
-        """
+        """Get available organism-specific databases"""
         return self.databases
-
 
 class SpecificityAnalyzer:
     """
-    Analyzes primer specificity and provides recommendations
+    Analyzes primer specificity using BLAST results
     """
     
     def __init__(self):
-        self.blast_client = BlastIntegration()
-        self.logger = logging.getLogger(__name__)
+        self.blast_integration = BlastIntegration()
     
     def analyze_primer_pair(self, forward_primer, reverse_primer, 
                            target_organism=None, database='nt'):
         """
-        Analyze specificity for a primer pair
+        Analyze specificity of a primer pair
         
         Args:
             forward_primer (str): Forward primer sequence
@@ -198,140 +170,84 @@ class SpecificityAnalyzer:
             database (str): BLAST database
             
         Returns:
-            dict: Comprehensive specificity analysis
+            dict: Specificity analysis results
         """
-        self.logger.info("Starting primer pair specificity analysis")
-        
-        # Analyze forward primer
-        forward_results = self.blast_client.blast_primer(
+        # BLAST both primers
+        forward_results = self.blast_integration.blast_primer(
             forward_primer, database, target_organism
         )
-        forward_off_targets = self.blast_client.filter_off_targets(forward_results)
-        
-        # Analyze reverse primer
-        reverse_results = self.blast_client.blast_primer(
+        reverse_results = self.blast_integration.blast_primer(
             reverse_primer, database, target_organism
         )
-        reverse_off_targets = self.blast_client.filter_off_targets(reverse_results)
         
-        # Combine analysis
-        analysis = {
+        # Filter off-targets
+        forward_off_targets = self.blast_integration.filter_off_targets(forward_results)
+        reverse_off_targets = self.blast_integration.filter_off_targets(reverse_results)
+        
+        # Calculate specificity scores
+        forward_score = self._calculate_specificity_score(forward_off_targets)
+        reverse_score = self._calculate_specificity_score(reverse_off_targets)
+        
+        # Overall assessment
+        overall_assessment = self._assess_overall_specificity(forward_score, reverse_score)
+        
+        return {
             'forward_primer': {
                 'sequence': forward_primer,
-                'total_hits': len(forward_results),
                 'off_targets': forward_off_targets,
-                'specificity_score': self._calculate_specificity_score(forward_off_targets)
+                'specificity_score': forward_score
             },
             'reverse_primer': {
                 'sequence': reverse_primer,
-                'total_hits': len(reverse_results),
                 'off_targets': reverse_off_targets,
-                'specificity_score': self._calculate_specificity_score(reverse_off_targets)
-            }
+                'specificity_score': reverse_score
+            },
+            'overall_assessment': overall_assessment,
+            'recommendation': self._get_recommendation(overall_assessment)
         }
-        
-        # Overall assessment
-        analysis['overall_specificity'] = self._assess_overall_specificity(
-            analysis['forward_primer']['specificity_score'],
-            analysis['reverse_primer']['specificity_score']
-        )
-        
-        return analysis
     
     def _calculate_specificity_score(self, off_targets):
-        """
-        Calculate specificity score based on off-targets
-        
-        Args:
-            off_targets (list): List of off-target hits
-            
-        Returns:
-            float: Specificity score (0-100)
-        """
+        """Calculate specificity score based on off-targets"""
         if not off_targets:
-            return 100.0
+            return 1.0  # Perfect specificity
         
-        # Weight off-targets by risk level
-        penalty = 0
-        for target in off_targets:
-            if target['risk_level'] == 'High':
-                penalty += 20
-            elif target['risk_level'] == 'Medium':
-                penalty += 10
+        # Penalize based on number and quality of off-targets
+        total_penalty = 0
+        
+        for off_target in off_targets:
+            # Higher penalty for high-risk off-targets
+            if off_target['risk_level'] == 'high':
+                total_penalty += 0.3
+            elif off_target['risk_level'] == 'medium':
+                total_penalty += 0.15
             else:
-                penalty += 5
+                total_penalty += 0.05
+            
+            # Additional penalty for very high identity
+            if off_target['percent_identity'] >= 98:
+                total_penalty += 0.1
         
-        # Cap at 100
-        score = max(0, 100 - penalty)
-        return score
+        return max(0.0, 1.0 - total_penalty)
     
     def _assess_overall_specificity(self, forward_score, reverse_score):
-        """
-        Assess overall primer pair specificity
-        
-        Args:
-            forward_score (float): Forward primer specificity score
-            reverse_score (float): Reverse primer specificity score
-            
-        Returns:
-            dict: Overall assessment
-        """
+        """Assess overall specificity of primer pair"""
         avg_score = (forward_score + reverse_score) / 2
         
-        if avg_score >= 90:
-            assessment = "Excellent"
-        elif avg_score >= 80:
-            assessment = "Good"
-        elif avg_score >= 70:
-            assessment = "Fair"
+        if avg_score >= 0.9:
+            return 'excellent'
+        elif avg_score >= 0.7:
+            return 'good'
+        elif avg_score >= 0.5:
+            return 'fair'
         else:
-            assessment = "Poor"
-        
-        return {
-            'score': avg_score,
-            'assessment': assessment,
-            'recommendation': self._get_recommendation(assessment)
-        }
+            return 'poor'
     
     def _get_recommendation(self, assessment):
-        """
-        Provide recommendations based on specificity assessment
-        
-        Args:
-            assessment (str): Specificity assessment
-            
-        Returns:
-            str: Recommendation text
-        """
+        """Get recommendation based on specificity assessment"""
         recommendations = {
-            "Excellent": "Primer pair shows excellent specificity. Proceed with confidence.",
-            "Good": "Primer pair shows good specificity. Consider validation with gel electrophoresis.",
-            "Fair": "Primer pair shows fair specificity. Optimize PCR conditions or consider redesign.",
-            "Poor": "Primer pair shows poor specificity. Redesign recommended."
+            'excellent': 'Primer pair has excellent specificity. Ready for use.',
+            'good': 'Primer pair has good specificity. Minor optimization may be beneficial.',
+            'fair': 'Primer pair has fair specificity. Consider redesigning primers.',
+            'poor': 'Primer pair has poor specificity. Redesign recommended.'
         }
-        
-        return recommendations.get(assessment, "Unable to assess specificity.")
-
-
-# Example usage
-if __name__ == "__main__":
-    # Configure logging
-    logging.basicConfig(level=logging.INFO)
-    
-    # Example primers
-    forward_primer = "ATGGCTAGCTAGCTAGCTAG"
-    reverse_primer = "CTAGCTAGCTAGCTAGCCAT"
-    
-    # Analyze specificity
-    analyzer = SpecificityAnalyzer()
-    results = analyzer.analyze_primer_pair(
-        forward_primer, 
-        reverse_primer, 
-        target_organism="Homo sapiens"
-    )
-    
-    print("Specificity Analysis Results:")
-    print(f"Forward Primer Specificity: {results['forward_primer']['specificity_score']}")
-    print(f"Reverse Primer Specificity: {results['reverse_primer']['specificity_score']}")
-    print(f"Overall Assessment: {results['overall_specificity']['assessment']}")
-    print(f"Recommendation: {results['overall_specificity']['recommendation']}")
+        return recommendations.get(assessment, 'Assessment unclear.')

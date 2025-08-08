@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple, Optional
 from Bio.Seq import Seq
 from Bio.SeqUtils import molecular_weight
 import re
+import itertools
 
 class PrimerAnalyzer:
     """Core algorithms for primer design and quality assessment"""
@@ -97,107 +98,128 @@ class PrimerAnalyzer:
             return 0.0
         sequence = sequence.upper()
         gc_count = sequence.count('G') + sequence.count('C')
-        total_bases = len(sequence)
-        return round((gc_count / total_bases) * 100, 1)
+        return round((gc_count / len(sequence)) * 100, 1)
     
     def calculate_primer_quality_score(self, sequence: str) -> Dict[str, float]:
         """
-        Calculate comprehensive primer quality score
+        Calculate comprehensive primer quality scores
         
+        Args:
+            sequence: DNA sequence string
+            
         Returns:
-            Dictionary with individual scores and overall quality
+            Dictionary with quality scores for different aspects
         """
-        sequence = sequence.upper().replace('U', 'T')
+        if not sequence:
+            return {
+                'length_score': 0.0,
+                'gc_score': 0.0,
+                'tm_score': 0.0,
+                'complexity_score': 0.0,
+                'terminal_score': 0.0,
+                'overall_score': 0.0
+            }
+        
+        sequence = sequence.upper()
         length = len(sequence)
         
-        scores = {
-            'length_score': 0.0,
-            'gc_score': 0.0,
-            'tm_score': 0.0,
-            'complexity_score': 0.0,
-            'terminal_score': 0.0,
-            'overall_score': 0.0
-        }
-        
-        # Length score (optimal 18-25 bp)
+        # Length score (optimal: 18-25 bp)
         if 18 <= length <= 25:
-            scores['length_score'] = 100.0
-        elif 16 <= length < 18 or 25 < length <= 30:
-            scores['length_score'] = 80.0
-        elif 14 <= length < 16 or 30 < length <= 35:
-            scores['length_score'] = 60.0
+            length_score = 1.0
+        elif 15 <= length <= 30:
+            length_score = 0.8
+        elif 12 <= length <= 35:
+            length_score = 0.6
         else:
-            scores['length_score'] = 20.0
+            length_score = 0.3
         
-        # GC content score (optimal 40-60%)
+        # GC content score (optimal: 40-60%)
         gc_content = self.calculate_gc_content(sequence)
         if 40 <= gc_content <= 60:
-            scores['gc_score'] = 100.0
-        elif 30 <= gc_content < 40 or 60 < gc_content <= 70:
-            scores['gc_score'] = 80.0
-        elif 20 <= gc_content < 30 or 70 < gc_content <= 80:
-            scores['gc_score'] = 60.0
+            gc_score = 1.0
+        elif 30 <= gc_content <= 70:
+            gc_score = 0.8
+        elif 20 <= gc_content <= 80:
+            gc_score = 0.6
         else:
-            scores['gc_score'] = 20.0
+            gc_score = 0.3
         
-        # Tm score (optimal 55-65°C)
+        # Melting temperature score (optimal: 55-65°C)
         tm = self.calculate_melting_temperature(sequence)
         if 55 <= tm <= 65:
-            scores['tm_score'] = 100.0
-        elif 50 <= tm < 55 or 65 < tm <= 70:
-            scores['tm_score'] = 80.0
-        elif 45 <= tm < 50 or 70 < tm <= 75:
-            scores['tm_score'] = 60.0
+            tm_score = 1.0
+        elif 50 <= tm <= 70:
+            tm_score = 0.8
+        elif 45 <= tm <= 75:
+            tm_score = 0.6
         else:
-            scores['tm_score'] = 20.0
+            tm_score = 0.3
         
-        # Complexity score (avoid runs and repeats)
-        complexity_penalty = 0
+        # Sequence complexity score
+        complexity_score = self._calculate_complexity_score(sequence)
         
-        # Check for runs of same nucleotide (>3 consecutive)
-        for base in 'ATCG':
-            if base * 4 in sequence:
-                complexity_penalty += 20
+        # Terminal stability score
+        terminal_score = self._calculate_terminal_score(sequence)
         
-        # Check for dinucleotide repeats
-        for i in range(len(sequence) - 5):
-            if sequence[i:i+2] == sequence[i+2:i+4] == sequence[i+4:i+6]:
-                complexity_penalty += 15
-        
-        scores['complexity_score'] = max(0, 100 - complexity_penalty)
-        
-        # Terminal score (prefer G/C at 3' end, avoid runs at 3' end)
-        terminal_penalty = 0
-        
-        # Check 3' end stability
-        if sequence[-1] in 'AT':
-            terminal_penalty += 10
-        
-        # Check for 3' end runs
-        if sequence[-3:] in ['AAA', 'TTT', 'CCC', 'GGG']:
-            terminal_penalty += 20
-        
-        scores['terminal_score'] = max(0, 100 - terminal_penalty)
-        
-        # Calculate overall score (weighted average)
-        weights = {
-            'length_score': 0.2,
-            'gc_score': 0.25,
-            'tm_score': 0.25,
-            'complexity_score': 0.2,
-            'terminal_score': 0.1
-        }
-        
-        scores['overall_score'] = sum(
-            scores[key] * weights[key] for key in weights
+        # Overall score (weighted average)
+        overall_score = (
+            length_score * 0.2 +
+            gc_score * 0.2 +
+            tm_score * 0.25 +
+            complexity_score * 0.2 +
+            terminal_score * 0.15
         )
         
-        return {k: round(v, 1) for k, v in scores.items()}
+        return {
+            'length_score': round(length_score, 3),
+            'gc_score': round(gc_score, 3),
+            'tm_score': round(tm_score, 3),
+            'complexity_score': round(complexity_score, 3),
+            'terminal_score': round(terminal_score, 3),
+            'overall_score': round(overall_score, 3)
+        }
+    
+    def _calculate_complexity_score(self, sequence: str) -> float:
+        """Calculate sequence complexity score"""
+        # Check for repetitive patterns
+        repetitive_score = 1.0
+        
+        # Check for homopolymers (runs of same nucleotide)
+        for base in 'ATCG':
+            max_run = max(len(list(g)) for k, g in itertools.groupby(sequence) if k == base)
+            if max_run > 4:
+                repetitive_score -= 0.2 * (max_run - 4)
+        
+        # Check for dinucleotide repeats
+        dinucleotide_repeats = re.findall(r'(..)\1{2,}', sequence)
+        if dinucleotide_repeats:
+            repetitive_score -= 0.1 * len(dinucleotide_repeats)
+        
+        return max(0.0, repetitive_score)
+    
+    def _calculate_terminal_score(self, sequence: str) -> float:
+        """Calculate terminal stability score"""
+        if len(sequence) < 2:
+            return 0.0
+        
+        # Prefer G/C at 3' end for better extension
+        terminal_score = 1.0
+        
+        if sequence[-1] in 'GC':
+            terminal_score += 0.2
+        elif sequence[-1] in 'AT':
+            terminal_score -= 0.1
+        
+        # Avoid G at 5' end (can cause secondary structure)
+        if sequence[0] == 'G':
+            terminal_score -= 0.1
+        
+        return max(0.0, min(1.0, terminal_score))
     
     def detect_primer_dimers(self, primer1: str, primer2: str, 
                            min_overlap: int = 4) -> List[Dict]:
         """
-        Detect potential primer dimers between two primers
+        Detect potential primer-dimer formations
         
         Args:
             primer1: First primer sequence
@@ -205,118 +227,110 @@ class PrimerAnalyzer:
             min_overlap: Minimum overlap length to consider
             
         Returns:
-            List of potential dimer structures
+            List of dimer structures found
         """
-        primer1 = primer1.upper().replace('U', 'T')
-        primer2 = primer2.upper().replace('U', 'T')
-        
         dimers = []
         
-        # Check for 3' complementarity (most critical)
-        for i in range(min_overlap, min(len(primer1), len(primer2)) + 1):
-            # Check primer1 3' end vs primer2 3' end
-            seq1_3prime = primer1[-i:]
-            seq2_3prime = primer2[-i:]
-            
-            # Reverse complement check
-            complement = str(Seq(seq2_3prime).reverse_complement())
-            
-            matches = sum(1 for a, b in zip(seq1_3prime, complement) if a == b)
-            
-            if matches >= min_overlap:
-                stability_score = self._calculate_dimer_stability(seq1_3prime, complement)
-                
+        # Check all possible overlaps
+        for overlap_len in range(min_overlap, min(len(primer1), len(primer2)) + 1):
+            # Check 3' end of primer1 with 3' end of primer2
+            if primer1[-overlap_len:] == self._reverse_complement(primer2[-overlap_len:]):
                 dimers.append({
-                    'type': '3prime_dimer',
-                    'primer1_region': seq1_3prime,
-                    'primer2_region': seq2_3prime,
-                    'matches': matches,
-                    'total_length': i,
-                    'match_percentage': (matches / i) * 100,
-                    'stability_score': stability_score,
-                    'risk_level': self._assess_dimer_risk(matches, i, stability_score)
+                    'type': '3-3',
+                    'overlap_length': overlap_len,
+                    'overlap_sequence': primer1[-overlap_len:],
+                    'stability_score': self._calculate_dimer_stability(
+                        primer1[-overlap_len:], 
+                        primer2[-overlap_len:]
+                    ),
+                    'risk_level': self._assess_dimer_risk(overlap_len, overlap_len, 0.8)
+                })
+            
+            # Check 3' end of primer1 with 5' end of primer2
+            if primer1[-overlap_len:] == self._reverse_complement(primer2[:overlap_len]):
+                dimers.append({
+                    'type': '3-5',
+                    'overlap_length': overlap_len,
+                    'overlap_sequence': primer1[-overlap_len:],
+                    'stability_score': self._calculate_dimer_stability(
+                        primer1[-overlap_len:], 
+                        primer2[:overlap_len]
+                    ),
+                    'risk_level': self._assess_dimer_risk(overlap_len, overlap_len, 0.6)
                 })
         
-        # Check for hairpin structures in individual primers
-        for primer_name, primer_seq in [('primer1', primer1), ('primer2', primer2)]:
-            hairpins = self._detect_hairpins(primer_seq)
-            for hairpin in hairpins:
-                hairpin['primer'] = primer_name
-                dimers.append(hairpin)
-        
-        return sorted(dimers, key=lambda x: x.get('stability_score', 0), reverse=True)
+        return dimers
     
     def _calculate_dimer_stability(self, seq1: str, seq2: str) -> float:
-        """Calculate thermodynamic stability of dimer formation"""
-        if len(seq1) != len(seq2):
-            return 0.0
+        """Calculate stability score for dimer formation"""
+        # Simple scoring based on GC content and length
+        gc_content = self.calculate_gc_content(seq1)
+        length = len(seq1)
         
-        # Simple stability calculation based on GC content and length
-        gc_content = sum(1 for i, (a, b) in enumerate(zip(seq1, seq2)) 
-                        if a == b and a in 'GC') / len(seq1)
-        
-        match_ratio = sum(1 for a, b in zip(seq1, seq2) if a == b) / len(seq1)
-        
-        return round(gc_content * match_ratio * len(seq1) * 2, 1)
+        # Higher GC content and longer length = more stable
+        stability = (gc_content / 100) * (length / 20)
+        return min(1.0, stability)
     
     def _assess_dimer_risk(self, matches: int, total_length: int, 
                           stability_score: float) -> str:
-        """Assess the risk level of dimer formation"""
-        match_percentage = (matches / total_length) * 100
+        """Assess risk level of dimer formation"""
+        risk_score = (matches / total_length) * stability_score
         
-        if stability_score > 15 or (matches >= 4 and match_percentage > 75):
-            return 'HIGH'
-        elif stability_score > 8 or (matches >= 3 and match_percentage > 60):
-            return 'MEDIUM'
+        if risk_score > 0.7:
+            return 'high'
+        elif risk_score > 0.4:
+            return 'medium'
         else:
-            return 'LOW'
+            return 'low'
     
     def _detect_hairpins(self, sequence: str, min_stem_length: int = 4) -> List[Dict]:
-        """Detect hairpin structures in a single primer"""
+        """Detect potential hairpin structures"""
         hairpins = []
-        seq_len = len(sequence)
         
-        for i in range(seq_len - min_stem_length * 2):
-            for j in range(i + min_stem_length * 2, seq_len):
-                # Check for complementarity
-                region1 = sequence[i:i + min_stem_length]
-                region2 = sequence[j:j + min_stem_length]
+        # Check for palindromic sequences that could form hairpins
+        for i in range(len(sequence) - min_stem_length):
+            for j in range(i + min_stem_length, len(sequence)):
+                stem_length = j - i
+                if stem_length > 8:  # Limit stem length
+                    continue
                 
-                complement = str(Seq(region2).reverse_complement())
-                matches = sum(1 for a, b in zip(region1, complement) if a == b)
-                
-                if matches >= min_stem_length:
-                    loop_size = j - i - min_stem_length
-                    
-                    if 3 <= loop_size <= 10:  # Reasonable loop size
-                        stability = self._calculate_dimer_stability(region1, complement)
-                        
-                        hairpins.append({
-                            'type': 'hairpin',
-                            'stem_sequence': region1,
-                            'loop_size': loop_size,
-                            'matches': matches,
-                            'stability_score': stability,
-                            'risk_level': self._assess_dimer_risk(matches, min_stem_length, stability)
-                        })
+                stem_seq = sequence[i:j]
+                if stem_seq == self._reverse_complement(stem_seq):
+                    hairpins.append({
+                        'start': i,
+                        'end': j,
+                        'stem_length': stem_length,
+                        'stem_sequence': stem_seq
+                    })
         
         return hairpins
     
+    def _reverse_complement(self, sequence: str) -> str:
+        """Get reverse complement of sequence"""
+        complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
+        return ''.join(complement.get(base, base) for base in reversed(sequence))
+    
     def analyze_primer_sequence(self, sequence: str) -> Dict:
         """
-        Comprehensive analysis of a single primer sequence
+        Comprehensive primer sequence analysis
         
+        Args:
+            sequence: DNA sequence string
+            
         Returns:
-            Complete analysis including all metrics
+            Dictionary with analysis results
         """
-        analysis = {
-            'sequence': sequence.upper(),
+        if not sequence:
+            return {}
+        
+        sequence = sequence.upper()
+        
+        return {
+            'sequence': sequence,
             'length': len(sequence),
             'gc_content': self.calculate_gc_content(sequence),
             'melting_temperature': self.calculate_melting_temperature(sequence),
-            'molecular_weight': round(molecular_weight(Seq(sequence), 'DNA'), 1),
             'quality_scores': self.calculate_primer_quality_score(sequence),
-            'hairpins': self._detect_hairpins(sequence)
+            'hairpins': self._detect_hairpins(sequence),
+            'molecular_weight': molecular_weight(Seq(sequence), 'DNA')
         }
-        
-        return analysis

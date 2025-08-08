@@ -99,34 +99,21 @@ class InSilicoPCR:
             mismatches = self._count_mismatches(search_primer, template_segment)
             
             if mismatches <= max_mismatches:
-                binding_site = {
+                binding_sites.append({
                     'position': i,
-                    'end_position': i + primer_len - 1,
                     'mismatches': mismatches,
                     'sequence': template_segment,
-                    'tm': mt.Tm_NN(template_segment),
-                    'gc_content': calculate_gc_content(template_segment),
                     'direction': direction
-                }
-                binding_sites.append(binding_site)
+                })
         
         return binding_sites
     
     def _count_mismatches(self, seq1, seq2):
-        """
-        Count mismatches between two sequences
-        
-        Args:
-            seq1 (str): First sequence
-            seq2 (str): Second sequence
-            
-        Returns:
-            int: Number of mismatches
-        """
+        """Count mismatches between two sequences"""
         if len(seq1) != len(seq2):
-            return float('inf')
+            return len(seq1)  # Treat as complete mismatch
         
-        return sum(1 for a, b in zip(seq1.upper(), seq2.upper()) if a != b)
+        return sum(1 for a, b in zip(seq1, seq2) if a != b)
     
     def _generate_amplicons(self, template, forward_sites, reverse_sites, template_id):
         """
@@ -139,223 +126,239 @@ class InSilicoPCR:
             template_id (str): Template identifier
             
         Returns:
-            list: Generated amplicons
+            list: Amplicon results
         """
         amplicons = []
         
-        for f_site in forward_sites:
-            for r_site in reverse_sites:
-                # Check if primers are oriented correctly
-                if f_site['position'] < r_site['position']:
-                    # Forward primer upstream of reverse primer
-                    amplicon_start = f_site['position']
-                    amplicon_end = r_site['end_position']
-                    amplicon_size = amplicon_end - amplicon_start + 1
-                    
-                    # Extract amplicon sequence
-                    amplicon_seq = template[amplicon_start:amplicon_end + 1]
-                    
-                    amplicon = AmpliconResult(
-                        forward_start=f_site['position'],
-                        forward_end=f_site['end_position'],
-                        reverse_start=r_site['position'],
-                        reverse_end=r_site['end_position'],
-                        amplicon_size=amplicon_size,
-                        amplicon_sequence=amplicon_seq,
-                        template_id=template_id,
-                        strand='+'
-                    )
-                    amplicons.append(amplicon)
+        for fwd_site in forward_sites:
+            for rev_site in reverse_sites:
+                # Ensure forward site comes before reverse site
+                if fwd_site['position'] >= rev_site['position']:
+                    continue
+                
+                # Calculate amplicon size
+                amplicon_size = rev_site['position'] - fwd_site['position']
+                
+                # Check size constraints
+                if not (self.min_product_size <= amplicon_size <= self.max_product_size):
+                    continue
+                
+                # Extract amplicon sequence
+                amplicon_seq = template[fwd_site['position']:rev_site['position']]
+                
+                # Create amplicon result
+                amplicon = AmpliconResult(
+                    forward_start=fwd_site['position'],
+                    forward_end=fwd_site['position'] + len(fwd_site['sequence']),
+                    reverse_start=rev_site['position'],
+                    reverse_end=rev_site['position'] + len(rev_site['sequence']),
+                    amplicon_size=amplicon_size,
+                    amplicon_sequence=amplicon_seq,
+                    template_id=template_id,
+                    strand='+'
+                )
+                
+                amplicons.append(amplicon)
         
         return amplicons
     
     def analyze_amplicon_specificity(self, amplicons, target_template_ids=None):
         """
-        Analyze amplicon specificity and identify non-specific products
+        Analyze specificity of predicted amplicons
         
         Args:
-            amplicons (list): List of amplicons
-            target_template_ids (list): Expected target template IDs
+            amplicons (list): List of amplicon results
+            target_template_ids (list): List of target template IDs
             
         Returns:
             dict: Specificity analysis results
         """
-        # Group amplicons by size
-        size_groups = {}
-        for amplicon in amplicons:
-            size = amplicon.amplicon_size
-            if size not in size_groups:
-                size_groups[size] = []
-            size_groups[size].append(amplicon)
+        if not amplicons:
+            return {
+                'total_amplicons': 0,
+                'target_amplicons': 0,
+                'off_target_amplicons': 0,
+                'specificity_score': 0.0
+            }
         
-        # Identify target vs non-target amplicons
+        # Separate target and off-target amplicons
         target_amplicons = []
-        non_target_amplicons = []
+        off_target_amplicons = []
         
         for amplicon in amplicons:
             if target_template_ids and amplicon.template_id in target_template_ids:
                 target_amplicons.append(amplicon)
             else:
-                non_target_amplicons.append(amplicon)
+                off_target_amplicons.append(amplicon)
         
         # Calculate specificity metrics
         total_amplicons = len(amplicons)
         target_count = len(target_amplicons)
-        non_target_count = len(non_target_amplicons)
+        off_target_count = len(off_target_amplicons)
         
-        specificity_ratio = (target_count / total_amplicons * 100) if total_amplicons > 0 else 0
+        # Specificity score (higher is better)
+        if total_amplicons == 0:
+            specificity_score = 0.0
+        else:
+            specificity_score = target_count / total_amplicons
         
-        analysis = {
+        return {
             'total_amplicons': total_amplicons,
             'target_amplicons': target_count,
-            'non_target_amplicons': non_target_count,
-            'specificity_percentage': specificity_ratio,
+            'off_target_amplicons': off_target_count,
+            'specificity_score': specificity_score,
             'size_distribution': self._calculate_size_distribution(amplicons),
-            'non_specific_products': self._identify_problematic_products(
-                non_target_amplicons, target_amplicons
+            'problematic_products': self._identify_problematic_products(
+                off_target_amplicons, target_amplicons
             )
         }
-        
-        return analysis
     
     def _calculate_size_distribution(self, amplicons):
-        """
-        Calculate size distribution of amplicons
-        
-        Args:
-            amplicons (list): List of amplicons
-            
-        Returns:
-            dict: Size distribution statistics
-        """
+        """Calculate size distribution of amplicons"""
         if not amplicons:
             return {}
         
         sizes = [amp.amplicon_size for amp in amplicons]
         
         return {
-            'mean_size': np.mean(sizes),
-            'median_size': np.median(sizes),
-            'std_size': np.std(sizes),
             'min_size': min(sizes),
             'max_size': max(sizes),
-            'size_range': max(sizes) - min(sizes)
+            'mean_size': sum(sizes) / len(sizes),
+            'size_ranges': {
+                'small (<200bp)': len([s for s in sizes if s < 200]),
+                'medium (200-500bp)': len([s for s in sizes if 200 <= s <= 500]),
+                'large (>500bp)': len([s for s in sizes if s > 500])
+            }
         }
     
     def _identify_problematic_products(self, non_target_amplicons, target_amplicons):
-        """
-        Identify potentially problematic non-specific products
+        """Identify problematic amplification products"""
+        problematic = []
         
-        Args:
-            non_target_amplicons (list): Non-target amplicons
-            target_amplicons (list): Target amplicons
+        # Check for off-target products similar in size to targets
+        if target_amplicons:
+            target_sizes = [amp.amplicon_size for amp in target_amplicons]
+            target_size_range = (min(target_sizes) * 0.8, max(target_sizes) * 1.2)
             
-        Returns:
-            list: Problematic products with risk assessment
-        """
-        if not target_amplicons:
-            return []
+            for amp in non_target_amplicons:
+                if target_size_range[0] <= amp.amplicon_size <= target_size_range[1]:
+                    problematic.append({
+                        'type': 'size_conflict',
+                        'amplicon': amp,
+                        'issue': f'Off-target product ({amp.amplicon_size}bp) similar to target size'
+                    })
         
-        target_sizes = [amp.amplicon_size for amp in target_amplicons]
-        target_size_range = (min(target_sizes), max(target_sizes))
+        # Check for very small or very large products
+        for amp in non_target_amplicons:
+            if amp.amplicon_size < 100:
+                problematic.append({
+                    'type': 'small_product',
+                    'amplicon': amp,
+                    'issue': f'Very small off-target product ({amp.amplicon_size}bp)'
+                })
+            elif amp.amplicon_size > 2000:
+                problematic.append({
+                    'type': 'large_product',
+                    'amplicon': amp,
+                    'issue': f'Very large off-target product ({amp.amplicon_size}bp)'
+                })
         
-        problematic_products = []
-        
-        for amplicon in non_target_amplicons:
-            risk_level = "Low"
-            risk_factors = []
-            
-            # Check size similarity to target products
-            if target_size_range[0] <= amplicon.amplicon_size <= target_size_range[1]:
-                risk_level = "High"
-                risk_factors.append("Size overlaps with target products")
-            elif abs(amplicon.amplicon_size - np.mean(target_sizes)) < 100:
-                risk_level = "Medium"
-                risk_factors.append("Size close to target products")
-            
-            # Check for abundant templates
-            if "chromosome" in amplicon.template_id.lower():
-                risk_factors.append("Chromosomal template")
-                if risk_level == "Low":
-                    risk_level = "Medium"
-            
-            product_info = {
-                'template_id': amplicon.template_id,
-                'size': amplicon.amplicon_size,
-                'risk_level': risk_level,
-                'risk_factors': risk_factors
-            }
-            
-            problematic_products.append(product_info)
-        
-        # Sort by risk level
-        risk_order = {"High": 3, "Medium": 2, "Low": 1}
-        problematic_products.sort(
-            key=lambda x: risk_order.get(x['risk_level'], 0), 
-            reverse=True
-        )
-        
-        return problematic_products
+        return problematic
     
     def predict_pcr_efficiency(self, amplicons, primer_tm_forward, primer_tm_reverse):
         """
-        Predict PCR efficiency based on amplicon characteristics
+        Predict PCR efficiency based on primer properties and amplicon characteristics
         
         Args:
-            amplicons (list): List of amplicons
+            amplicons (list): List of amplicon results
             primer_tm_forward (float): Forward primer melting temperature
             primer_tm_reverse (float): Reverse primer melting temperature
             
         Returns:
-            dict: Efficiency predictions for each amplicon
+            dict: Efficiency predictions
         """
-        efficiency_predictions = []
-        
-        for amplicon in amplicons:
-            # Calculate GC content of amplicon
-            gc_content = calculate_gc_content(amplicon.amplicon_sequence)
-            
-            # Estimate amplicon Tm
-            amplicon_tm = mt.Tm_NN(amplicon.amplicon_sequence)
-            
-            # Predict efficiency based on multiple factors
-            efficiency_score = 100  # Start with perfect efficiency
-            
-            # Size penalty
-            if amplicon.amplicon_size > 1000:
-                efficiency_score -= (amplicon.amplicon_size - 1000) * 0.01
-            
-            # GC content penalty
-            optimal_gc = 50
-            gc_penalty = abs(gc_content - optimal_gc) * 0.5
-            efficiency_score -= gc_penalty
-            
-            # Tm difference penalty
-            avg_primer_tm = (primer_tm_forward + primer_tm_reverse) / 2
-            tm_diff_penalty = abs(amplicon_tm - avg_primer_tm) * 0.1
-            efficiency_score -= tm_diff_penalty
-            
-            # Ensure efficiency is between 0 and 100
-            efficiency_score = max(0, min(100, efficiency_score))
-            
-            prediction = {
-                'amplicon': amplicon,
-                'efficiency_score': efficiency_score,
-                'gc_content': gc_content,
-                'amplicon_tm': amplicon_tm,
-                'size_factor': min(1.0, 1000 / amplicon.amplicon_size),
-                'predicted_yield': 'High' if efficiency_score > 80 else 
-                                 'Medium' if efficiency_score > 60 else 'Low'
+        if not amplicons:
+            return {
+                'overall_efficiency': 'unknown',
+                'efficiency_factors': [],
+                'recommendations': []
             }
-            
-            efficiency_predictions.append(prediction)
         
-        return efficiency_predictions
-
+        efficiency_factors = []
+        recommendations = []
+        
+        # Analyze primer Tm difference
+        tm_diff = abs(primer_tm_forward - primer_tm_reverse)
+        if tm_diff <= 2:
+            efficiency_factors.append({
+                'factor': 'primer_tm_difference',
+                'status': 'good',
+                'value': f'{tm_diff:.1f}°C',
+                'description': 'Primer Tm difference is optimal'
+            })
+        elif tm_diff <= 5:
+            efficiency_factors.append({
+                'factor': 'primer_tm_difference',
+                'status': 'acceptable',
+                'value': f'{tm_diff:.1f}°C',
+                'description': 'Primer Tm difference is acceptable'
+            })
+        else:
+            efficiency_factors.append({
+                'factor': 'primer_tm_difference',
+                'status': 'poor',
+                'value': f'{tm_diff:.1f}°C',
+                'description': 'Large Tm difference may reduce efficiency'
+            })
+            recommendations.append('Consider redesigning primers to have similar Tm')
+        
+        # Analyze amplicon sizes
+        sizes = [amp.amplicon_size for amp in amplicons]
+        avg_size = sum(sizes) / len(sizes)
+        
+        if 100 <= avg_size <= 500:
+            efficiency_factors.append({
+                'factor': 'amplicon_size',
+                'status': 'good',
+                'value': f'{avg_size:.0f}bp',
+                'description': 'Optimal amplicon size range'
+            })
+        elif avg_size < 100:
+            efficiency_factors.append({
+                'factor': 'amplicon_size',
+                'status': 'poor',
+                'value': f'{avg_size:.0f}bp',
+                'description': 'Very small amplicons may be difficult to detect'
+            })
+            recommendations.append('Consider increasing amplicon size')
+        else:
+            efficiency_factors.append({
+                'factor': 'amplicon_size',
+                'status': 'acceptable',
+                'value': f'{avg_size:.0f}bp',
+                'description': 'Large amplicons may have reduced efficiency'
+            })
+        
+        # Determine overall efficiency
+        good_factors = len([f for f in efficiency_factors if f['status'] == 'good'])
+        poor_factors = len([f for f in efficiency_factors if f['status'] == 'poor'])
+        
+        if poor_factors == 0 and good_factors >= len(efficiency_factors) * 0.7:
+            overall_efficiency = 'high'
+        elif poor_factors <= 1:
+            overall_efficiency = 'medium'
+        else:
+            overall_efficiency = 'low'
+        
+        return {
+            'overall_efficiency': overall_efficiency,
+            'efficiency_factors': efficiency_factors,
+            'recommendations': recommendations
+        }
 
 class PCRSimulationReport:
     """
-    Generates detailed reports for PCR simulation results
+    Generates comprehensive reports from in-silico PCR simulations
     """
     
     def __init__(self):
@@ -363,156 +366,73 @@ class PCRSimulationReport:
     
     def generate_report(self, amplicons, specificity_analysis, efficiency_predictions):
         """
-        Generate comprehensive PCR simulation report
+        Generate a comprehensive PCR simulation report
         
         Args:
-            amplicons (list): List of amplicons
+            amplicons (list): List of amplicon results
             specificity_analysis (dict): Specificity analysis results
-            efficiency_predictions (list): Efficiency predictions
+            efficiency_predictions (dict): Efficiency prediction results
             
         Returns:
             dict: Comprehensive report
         """
-        report = {
+        return {
             'summary': {
-                'total_products': len(amplicons),
-                'expected_products': specificity_analysis.get('target_amplicons', 0),
-                'non_specific_products': specificity_analysis.get('non_target_amplicons', 0),
-                'specificity_score': specificity_analysis.get('specificity_percentage', 0)
+                'total_amplicons': len(amplicons),
+                'specificity_score': specificity_analysis.get('specificity_score', 0),
+                'efficiency_rating': efficiency_predictions.get('overall_efficiency', 'unknown')
             },
-            'product_details': self._format_amplicon_details(amplicons),
-            'size_analysis': specificity_analysis.get('size_distribution', {}),
-            'efficiency_analysis': self._summarize_efficiency(efficiency_predictions),
+            'amplicon_details': self._format_amplicon_details(amplicons),
+            'specificity_analysis': specificity_analysis,
+            'efficiency_analysis': efficiency_predictions,
             'recommendations': self._generate_recommendations(
                 specificity_analysis, efficiency_predictions
             )
         }
-        
-        return report
     
     def _format_amplicon_details(self, amplicons):
-        """
-        Format amplicon details for report
+        """Format amplicon details for reporting"""
+        if not amplicons:
+            return []
         
-        Args:
-            amplicons (list): List of amplicons
-            
-        Returns:
-            list: Formatted amplicon details
-        """
-        details = []
-        
-        for i, amplicon in enumerate(amplicons, 1):
-            detail = {
-                'product_id': f"Product_{i}",
-                'template': amplicon.template_id,
-                'size': amplicon.amplicon_size,
-                'forward_position': f"{amplicon.forward_start}-{amplicon.forward_end}",
-                'reverse_position': f"{amplicon.reverse_start}-{amplicon.reverse_end}",
-                'gc_content': round(calculate_gc_content(amplicon.amplicon_sequence), 2)
+        return [
+            {
+                'template_id': amp.template_id,
+                'size': amp.amplicon_size,
+                'position': f"{amp.forward_start}-{amp.reverse_end}",
+                'sequence_preview': amp.amplicon_sequence[:50] + "..." if len(amp.amplicon_sequence) > 50 else amp.amplicon_sequence
             }
-            details.append(detail)
-        
-        return details
+            for amp in amplicons
+        ]
     
     def _summarize_efficiency(self, efficiency_predictions):
-        """
-        Summarize efficiency predictions
-        
-        Args:
-            efficiency_predictions (list): Efficiency predictions
-            
-        Returns:
-            dict: Efficiency summary
-        """
-        if not efficiency_predictions:
-            return {}
-        
-        scores = [pred['efficiency_score'] for pred in efficiency_predictions]
+        """Summarize efficiency predictions"""
+        factors = efficiency_predictions.get('efficiency_factors', [])
         
         return {
-            'average_efficiency': np.mean(scores),
-            'efficiency_range': f"{min(scores):.1f} - {max(scores):.1f}",
-            'high_efficiency_products': len([s for s in scores if s > 80]),
-            'medium_efficiency_products': len([s for s in scores if 60 <= s <= 80]),
-            'low_efficiency_products': len([s for s in scores if s < 60])
+            'overall_rating': efficiency_predictions.get('overall_efficiency', 'unknown'),
+            'factor_count': len(factors),
+            'good_factors': len([f for f in factors if f['status'] == 'good']),
+            'poor_factors': len([f for f in factors if f['status'] == 'poor'])
         }
     
     def _generate_recommendations(self, specificity_analysis, efficiency_predictions):
-        """
-        Generate recommendations based on analysis
-        
-        Args:
-            specificity_analysis (dict): Specificity analysis
-            efficiency_predictions (list): Efficiency predictions
-            
-        Returns:
-            list: List of recommendations
-        """
+        """Generate recommendations based on analysis results"""
         recommendations = []
         
-        # Specificity recommendations
-        specificity_score = specificity_analysis.get('specificity_percentage', 0)
-        if specificity_score < 70:
-            recommendations.append(
-                "Low specificity detected. Consider primer redesign or "
-                "optimization of PCR conditions."
-            )
-        elif specificity_score < 90:
-            recommendations.append(
-                "Moderate specificity. Validate results with gel electrophoresis."
-            )
+        # Specificity-based recommendations
+        specificity_score = specificity_analysis.get('specificity_score', 0)
+        if specificity_score < 0.5:
+            recommendations.append("Low specificity detected. Consider redesigning primers.")
+        elif specificity_score < 0.8:
+            recommendations.append("Moderate specificity. Validate with experimental testing.")
         
-        # Efficiency recommendations
-        if efficiency_predictions:
-            avg_efficiency = np.mean([p['efficiency_score'] for p in efficiency_predictions])
-            if avg_efficiency < 60:
-                recommendations.append(
-                    "Low predicted efficiency. Consider optimizing annealing temperature "
-                    "or primer concentrations."
-                )
+        # Efficiency-based recommendations
+        efficiency_recs = efficiency_predictions.get('recommendations', [])
+        recommendations.extend(efficiency_recs)
         
-        # Size recommendations
-        size_dist = specificity_analysis.get('size_distribution', {})
-        if size_dist.get('size_range', 0) > 1000:
-            recommendations.append(
-                "Wide size range of products. Consider more specific primers."
-            )
-        
+        # General recommendations
         if not recommendations:
-            recommendations.append("PCR design looks good. Proceed with experimental validation.")
+            recommendations.append("Primer pair appears suitable for PCR amplification.")
         
         return recommendations
-
-
-# Example usage
-if __name__ == "__main__":
-    # Configure logging
-    logging.basicConfig(level=logging.INFO)
-    
-    # Example template sequences
-    templates = {
-        "target_gene": "ATGGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGC",
-        "off_target_1": "ATGGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGT"
-    }
-    
-    # Example primers
-    forward_primer = "ATGGCTAGCTAGCTAGCTAG"
-    reverse_primer = "CTAGCTAGCTAGCTAGCCAT"
-    
-    # Run simulation
-    pcr_sim = InSilicoPCR()
-    amplicons = pcr_sim.simulate_pcr(templates, forward_primer, reverse_primer)
-    
-    # Analyze results
-    specificity = pcr_sim.analyze_amplicon_specificity(amplicons, ["target_gene"])
-    efficiency = pcr_sim.predict_pcr_efficiency(amplicons, 60.0, 58.0)
-    
-    # Generate report
-    reporter = PCRSimulationReport()
-    report = reporter.generate_report(amplicons, specificity, efficiency)
-    
-    print("PCR Simulation Report:")
-    print(f"Total products: {report['summary']['total_products']}")
-    print(f"Specificity: {report['summary']['specificity_score']:.1f}%")
-    print(f"Recommendations: {report['recommendations']}")
